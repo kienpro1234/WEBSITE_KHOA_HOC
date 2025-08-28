@@ -1,0 +1,786 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum LectureType {
+  VIDEO
+  ARTICLE
+  QUIZ
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  REFUNDED
+  CANCELED
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum MediaJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum AuditTargetType {
+  COURSE
+  LECTURE
+  USER
+  TRANSACTION
+  CERTIFICATE
+}
+
+enum CartItemStatus {
+  PENDING
+  CHECKED_OUT
+  REMOVED
+}
+
+enum HTTPMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  PATCH
+}
+
+enum InstructorPayoutStatus {
+  PENDING
+  APPROVED
+  PAID
+  FAILED
+}
+
+enum VerificationCodeType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+// ========================================
+// CORE MODELS
+// ========================================
+
+model User {
+  id               Int      @id @default(autoincrement())
+  email            String   @unique
+  passwordHash     String
+  name             String?
+  bio              String?
+  verified         Boolean  @default(false)
+  stripeCustomerId String?
+  createdAt        DateTime @default(now())
+
+  profile           Profile?
+  enrollments       Enrollment[]
+  transactions      Transaction[]
+  reviews           Review[]
+  refreshTokens     RefreshToken[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  devices           Device[]
+  userTranslations  UserTranslation[]
+  questions         Question[]
+  answers           Answer[]
+  questionVotes     QuestionVote[]
+  answerVotes       AnswerVote[]
+  questionFollows   QuestionFollow[]
+  cartItems         CartItem[]
+  lectureProgresses LectureProgress[]
+  courseProgresses  CourseProgress[]
+  certificates      Certificate[]
+  sentMessages      ChatMessage[]      @relation("Sender")
+  receivedMessages  ChatMessage[]      @relation("Receiver")
+  authProviders     UserAuthProvider[]
+  courseInstructors CourseInstructor[]
+  instructorStats   InstructorStats[]
+  instructorPayouts InstructorPayout[]
+  courseResources   CourseResource[]
+
+  createdLanguages     Language[]          @relation("CreatedByLanguage")
+  updatedLanguages     Language[]          @relation("UpdatedByLanguage")
+  createdUserTrans     UserTranslation[]   @relation("CreatedByUserTranslation")
+  updatedUserTrans     UserTranslation[]   @relation("UpdatedByUserTranslation")
+  createdLectureTrans  LectureTranslation[] @relation("CreatedByLectureTranslation")
+  updatedLectureTrans  LectureTranslation[] @relation("UpdatedByLectureTranslation")
+  createdCourseTrans   CourseTranslation[]  @relation("CreatedByCourseTranslation")
+  updatedCourseTrans   CourseTranslation[]  @relation("UpdatedByCourseTranslation")
+  createdCategoryTrans CategoryTranslation[] @relation("CreatedByCategoryTranslation")
+  updatedCategoryTrans CategoryTranslation[] @relation("UpdatedByCategoryTranslation")
+  createdRoles         Role[]              @relation("CreatedByRole")
+  updatedRoles         Role[]              @relation("UpdatedByRole")
+  createdPermissions   Permission[]        @relation("CreatedByPermission")
+  updatedPermissions   Permission[]        @relation("UpdatedByPermission")
+}
+
+model Profile {
+  id          Int     @id @default(autoincrement())
+  userId      Int     @unique
+  avatarUrl   String?
+  socialLinks Json?  @db.JsonB
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserAuthProvider {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  provider          String
+  providerUserId    String
+  emailFromProvider String?
+  accessToken       String?   @db.VarChar(1000)
+  refreshToken      String?   @db.VarChar(1000)
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId, provider])
+}
+
+// ========================================
+// COURSE & CONTENT MODELS
+// ========================================
+
+model Category {
+  id       Int     @id @default(autoincrement())
+  name     String
+  parentId Int?
+
+  parent       Category?             @relation("SubCategories", fields: [parentId], references: [id])
+  children     Category[]            @relation("SubCategories")
+  courses      Course[]
+  translations CategoryTranslation[]
+}
+
+model Course {
+  id           Int       @id @default(autoincrement())
+  categoryId   Int
+  title        String
+  slug         String    @unique
+  shortDesc    String?
+  fullDesc     String?
+  priceCents   Int
+  currency     String?
+  isPublished  Boolean   @default(false)
+  publishedAt  DateTime?
+  thumbnailUrl String?
+  level        String?
+  language     String?
+  createdAt    DateTime  @default(now())
+
+  category         Category           @relation(fields: [categoryId], references: [id])
+  lectures         Lecture[]
+  enrollments      Enrollment[]
+  transactionItems TransactionItem[]
+  reviews          Review[]
+  translations     CourseTranslation[]
+  snapshots        CourseSnapshot[]
+  questions        Question[]
+  courseTags       CourseTag[]
+  cartItems        CartItem[]
+  courseProgresses CourseProgress[]
+  certificates     Certificate[]
+  instructors      CourseInstructor[]
+  instructorStats  InstructorStats[]
+  resources        CourseResource[]
+}
+
+model Lecture {
+  id              Int         @id @default(autoincrement())
+  courseId        Int
+  title           String
+  type            LectureType
+  contentUrl      String?
+  durationSeconds Int?
+  orderIndex      Int?
+  isPreview       Boolean     @default(false)
+
+  course          Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  mediaJobs       MediaJob[]
+  translations    LectureTranslation[]
+  questionVotes   QuestionVote[]
+  answerVotes     AnswerVote[]
+  lectureProgress LectureProgress[]
+}
+
+// ========================================
+// E-COMMERCE & USER INTERACTION
+// ========================================
+
+model Enrollment {
+  id          Int              @id @default(autoincrement())
+  userId      Int
+  courseId    Int
+  purchasedAt DateTime         @default(now())
+  amountCents Int
+  status      EnrollmentStatus
+
+  user             User             @relation(fields: [userId], references: [id])
+  course           Course           @relation(fields: [courseId], references: [id])
+  transactionItems TransactionItem[]
+  snapshots        CourseSnapshot[]
+}
+
+model Transaction {
+  id                Int               @id @default(autoincrement())
+  userId            Int
+  totalAmountCents  Int
+  status            TransactionStatus
+  provider          String
+  providerPaymentId String?
+  createdAt         DateTime          @default(now())
+
+  user  User              @relation(fields: [userId], references: [id])
+  items TransactionItem[]
+}
+
+model TransactionItem {
+  id            Int        @id @default(autoincrement())
+  transactionId Int
+  courseId      Int
+  enrollmentId  Int        @unique
+  amountCents   Int
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  course      Course      @relation(fields: [courseId], references: [id])
+  enrollment  Enrollment  @relation(fields: [enrollmentId], references: [id])
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  courseId  Int
+  userId    Int
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+}
+
+model Coupon {
+  id              Int      @id @default(autoincrement())
+  code            String   @unique
+  discountPercent Int
+  validFrom       DateTime
+  validTo         DateTime
+  usageLimit      Int?
+  usedCount       Int      @default(0)
+}
+
+model CartItem {
+  id        Int            @id @default(autoincrement())
+  userId    Int
+  courseId  Int
+  addedAt   DateTime       @default(now())
+  status    CartItemStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+}
+
+// ========================================
+// Q&A MODELS
+// ========================================
+
+model Question {
+  id        Int      @id @default(autoincrement())
+  courseId  Int
+  userId    Int
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course        Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers       Answer[]
+  questionVotes QuestionVote[]
+  answerVotes   AnswerVote[]
+  follows       QuestionFollow[]
+}
+
+model Answer {
+  id           Int      @id @default(autoincrement())
+  questionId   Int
+  userId       Int
+  content      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  isInstructor Boolean  @default(false)
+  isAccepted   Boolean  @default(false)
+
+  question    Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answerVotes AnswerVote[]
+}
+
+model QuestionVote {
+  id         Int      @id @default(autoincrement())
+  questionId Int
+  lectureId  Int?
+  userId     Int
+  value      Int
+  createdAt  DateTime @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  lecture  Lecture? @relation(fields: [lectureId], references: [id], onDelete: SetNull)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+}
+
+model AnswerVote {
+  id         Int      @id @default(autoincrement())
+  answerId   Int
+  questionId Int
+  lectureId  Int?
+  userId     Int
+  value      Int
+  createdAt  DateTime @default(now())
+
+  answer   Answer   @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+  lecture  Lecture? @relation(fields: [lectureId], references: [id], onDelete: SetNull)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, answerId])
+}
+
+model QuestionFollow {
+  id         Int      @id @default(autoincrement())
+  questionId Int
+  userId     Int
+  createdAt  DateTime @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, userId])
+}
+
+// ========================================
+// PROGRESS & CERTIFICATE MODELS
+// ========================================
+
+model LectureProgress {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  lectureId     Int
+  progress      Decimal  @default(0.00) @db.Decimal(5, 2)
+  isCompleted   Boolean  @default(false)
+  lastWatchedAt DateTime
+  updatedAt     DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lecture Lecture @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lectureId])
+}
+
+model CourseProgress {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  courseId          Int
+  totalLectures     Int
+  completedLectures Int      @default(0)
+  progress          Decimal  @default(0.00) @db.Decimal(5, 2)
+  updatedAt         DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+}
+
+model Certificate {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  courseId       Int
+  templateId     Int
+  certificateUrl String   @db.VarChar(500)
+  issuedAt       DateTime
+
+  user     User                @relation(fields: [userId], references: [id])
+  course   Course              @relation(fields: [courseId], references: [id])
+  template CertificateTemplate @relation(fields: [templateId], references: [id])
+}
+
+model CertificateTemplate {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  layout    Json    @db.JsonB
+  createdAt DateTime @default(now())
+
+  certificates Certificate[]
+}
+
+// ========================================
+// SYSTEM & UTILITY MODELS
+// ========================================
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  deviceId  Int      @unique
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+model Device {
+  id                Int           @id @default(autoincrement())
+  userId            Int
+  deviceFingerprint String        @unique
+  deviceName        String?
+  deviceType        String?
+  ipAddress         String?
+  userAgent         String?
+  lastLoginAt       DateTime?
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken RefreshToken?
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  payload   Json   @db.JsonB
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MediaJob {
+  id        Int            @id @default(autoincrement())
+  lectureId Int
+  status    MediaJobStatus
+  sourceUrl String
+  outputs   Json?  @db.JsonB
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  lecture Lecture @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         Int             @id @default(autoincrement())
+  userId     Int
+  action     String          @db.VarChar(100)
+  targetType AuditTargetType
+  targetId   Int
+  metadata   Json?           @db.JsonB
+  createdAt  DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model VerificationCode {
+  id        Int                @id @default(autoincrement())
+  email     String
+  code      String
+  type      VerificationCodeType
+  expiresAt DateTime
+  createdAt DateTime           @default(now())
+
+  @@index([email, code, type])
+  @@index([expiresAt])
+}
+
+model CourseSnapshot {
+  id           Int       @id @default(autoincrement())
+  enrollmentId Int       @unique
+  courseId     Int?
+  title        String
+  slug         String
+  shortDesc    String
+  fullDesc     String
+  thumbnailUrl String
+  priceCents   Int
+  currency     String
+  level        String
+  language     String
+  createdAt    DateTime  @default(now())
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  course     Course?    @relation(fields: [courseId], references: [id], onDelete: SetNull)
+}
+
+// ========================================
+// CHAT MODELS
+// ========================================
+
+model ChatMessage {
+  id         Int       @id @default(autoincrement())
+  roomId     Int?
+  senderId   Int
+  receiverId Int?
+  message    String
+  createdAt  DateTime  @default(now())
+
+  room     ChatRoom? @relation(fields: [roomId], references: [id])
+  sender   User      @relation("Sender", fields: [senderId], references: [id])
+  receiver User?     @relation("Receiver", fields: [receiverId], references: [id])
+}
+
+model ChatRoom {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+
+  messages ChatMessage[]
+}
+
+// ========================================
+// TAGGING MODELS
+// ========================================
+
+model Tag {
+  id         Int         @id @default(autoincrement())
+  name       String      @unique @db.VarChar(100)
+  slug       String      @unique @db.VarChar(120)
+  createdAt  DateTime    @default(now())
+  courseTags CourseTag[]
+}
+
+model CourseTag {
+  id        Int      @id @default(autoincrement())
+  courseId  Int
+  tagId     Int
+  createdAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, tagId])
+}
+
+// ========================================
+// INSTRUCTOR-SPECIFIC MODELS
+// ========================================
+
+model CourseInstructor {
+  id       Int      @id @default(autoincrement())
+  courseId Int
+  userId   Int
+  role     String
+  joinedAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+}
+
+model InstructorStats {
+  id                Int      @id @default(autoincrement())
+  instructorId      Int
+  courseId          Int
+  totalStudents     Int      @default(0)
+  totalRevenueCents BigInt   @default(0)
+  lastUpdated       DateTime @updatedAt
+
+  instructor User   @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([instructorId, courseId])
+}
+
+model InstructorPayout {
+  id           Int                    @id @default(autoincrement())
+  instructorId Int
+  amountCents  BigInt
+  status       InstructorPayoutStatus
+  requestedAt  DateTime               @default(now())
+  approvedAt   DateTime?
+  paidAt       DateTime?
+  note         String?
+
+  instructor User @relation(fields: [instructorId], references: [id])
+}
+
+model CourseResource {
+  id           Int      @id @default(autoincrement())
+  courseId     Int
+  instructorId Int
+  title        String
+  resourceUrl  String   @db.VarChar(1000)
+  resourceType String
+  uploadedAt   DateTime @default(now())
+
+  course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructor User   @relation(fields: [instructorId], references: [id])
+}
+
+// ========================================
+// INTERNATIONALIZATION (i18n) MODELS
+// ========================================
+
+model Language {
+  id          Int       @id @default(autoincrement())
+  name        String
+  code        String    @unique
+  createdById Int?
+  updatedById Int?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy            User?                 @relation("CreatedByLanguage", fields: [createdById], references: [id])
+  updatedBy            User?                 @relation("UpdatedByLanguage", fields: [updatedById], references: [id])
+  userTranslations     UserTranslation[]
+  lectureTranslations  LectureTranslation[]
+  courseTranslations   CourseTranslation[]
+  categoryTranslations CategoryTranslation[]
+}
+
+model UserTranslation {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  languageId  Int
+  name        String?
+  bio         String?
+  createdById Int?
+  updatedById Int?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("CreatedByUserTranslation", fields: [createdById], references: [id])
+  updatedBy User?    @relation("UpdatedByUserTranslation", fields: [updatedById], references: [id])
+
+  @@unique([userId, languageId])
+}
+
+model LectureTranslation {
+  id          Int       @id @default(autoincrement())
+  lectureId   Int
+  languageId  Int
+  title       String
+  content     String?
+  createdById Int?
+  updatedById Int?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lecture   Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("CreatedByLectureTranslation", fields: [createdById], references: [id])
+  updatedBy User?    @relation("UpdatedByLectureTranslation", fields: [updatedById], references: [id])
+
+  @@unique([lectureId, languageId])
+}
+
+model CourseTranslation {
+  id          Int       @id @default(autoincrement())
+  courseId    Int
+  languageId  Int
+  title       String
+  slug        String
+  shortDesc   String
+  fullDesc    String
+  createdById Int?
+  updatedById Int?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("CreatedByCourseTranslation", fields: [createdById], references: [id])
+  updatedBy User?    @relation("UpdatedByCourseTranslation", fields: [updatedById], references: [id])
+
+  @@unique([courseId, languageId])
+}
+
+model CategoryTranslation {
+  id          Int       @id @default(autoincrement())
+  categoryId  Int
+  languageId  Int
+  name        String
+  description String?
+  createdById Int?
+  updatedById Int?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  category  Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("CreatedByCategoryTranslation", fields: [createdById], references: [id])
+  updatedBy User?    @relation("UpdatedByCategoryTranslation", fields: [updatedById], references: [id])
+
+  @@unique([categoryId, languageId])
+}
+
+// ========================================
+// AUTHORIZATION (RBAC) MODELS
+// ========================================
+
+model Role {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  createdById Int?
+  updatedById Int?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy   User?         @relation("CreatedByRole", fields: [createdById], references: [id])
+  updatedBy   User?         @relation("UpdatedByRole", fields: [updatedById], references: [id])
+  permissions Permission[]
+}
+
+model Permission {
+  id          Int         @id @default(autoincrement())
+  name        String
+  description String?
+  path        String?
+  method      HTTPMethod?
+  createdById Int?
+  updatedById Int?
+  deletedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  createdBy User?   @relation("CreatedByPermission", fields: [createdById], references: [id])
+  updatedBy User?   @relation("UpdatedByPermission", fields: [updatedById], references: [id])
+  roles     Role[]
+}
