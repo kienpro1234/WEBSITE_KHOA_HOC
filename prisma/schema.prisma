@@ -162,6 +162,7 @@ model User {
   updatedRoles         Role[]              @relation("UpdatedByRole")
   createdPermissions   Permission[]        @relation("CreatedByPermission")
   updatedPermissions   Permission[]        @relation("UpdatedByPermission")
+  deletedPermissions   Permission[]        @relation("DeletedByPermission")
 
   @@unique([email, password])
 }
@@ -871,14 +872,17 @@ model Permission {
   name        String
   description String?
   path        String?
-  method      HTTPMethod?
+  method      HTTPMethod
+  module      String     @db.VarChar(1000)
   createdById Int?
   updatedById Int?
+  deletedById Int?
   deletedAt   DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
   createdBy User?  @relation("CreatedByPermission", fields: [createdById], references: [id])
   updatedBy User?  @relation("UpdatedByPermission", fields: [updatedById], references: [id])
+  deletedBy User?  @relation("DeletedByPermission", fields: [deletedById], references: [id])
   roles     Role[]
 }
