@@ -70,8 +70,15 @@ enum InstructorPayoutStatus {
 }
 
 enum VerificationCodeType {
-  EMAIL_VERIFICATION
-  PASSWORD_RESET
+  REGISTER
+  FORGET_PASSWORD
+  VERIFY_EMAIL
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  FACEBOOK
 }
 
 // ========================================
@@ -79,70 +86,101 @@ enum VerificationCodeType {
 // ========================================
 
 model User {
-  id               Int      @id @default(autoincrement())
-  email            String   @unique
-  passwordHash     String
+  id               Int       @id @default(autoincrement())
+  email            String?
+  password         String
   name             String?
   bio              String?
-  verified         Boolean  @default(false)
+
   stripeCustomerId String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  deletedById      Int?
 
-  profile           Profile?
-  enrollments       Enrollment[]
-  transactions      Transaction[]
-  reviews           Review[]
-  refreshTokens     RefreshToken[]
-  notifications     Notification[]
-  auditLogs         AuditLog[]
-  devices           Device[]
-  userTranslations  UserTranslation[]
-  questions         Question[]
-  answers           Answer[]
-  questionVotes     QuestionVote[]
-  answerVotes       AnswerVote[]
-  questionFollows   QuestionFollow[]
-  cartItems         CartItem[]
-  lectureProgresses LectureProgress[]
-  courseProgresses  CourseProgress[]
-  certificates      Certificate[]
-  sentMessages      ChatMessage[]      @relation("Sender")
-  receivedMessages  ChatMessage[]      @relation("Receiver")
-  authProviders     UserAuthProvider[]
-  courseInstructors CourseInstructor[]
-  instructorStats   InstructorStats[]
-  instructorPayouts InstructorPayout[]
-  courseResources   CourseResource[]
+  roleId Int
+  role   Role @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  deletedBy User? @relation("UsersDeletedByAdmin", fields: [deletedById], references: [id]) // Added Relation
+
+  profile             Profile?
+  authProvider       UserAuthProvider?
+  enrollments         Enrollment[]
+  transactions        Transaction[]
+  reviews             Review[]
+  refreshTokens       RefreshToken[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  devices             Device[]
+  userTranslations    UserTranslation[]
+  questions           Question[]
+  answers             Answer[]
+  questionVotes       QuestionVote[]
+  answerVotes         AnswerVote[]
+  questionFollows     QuestionFollow[]
+  cartItems           CartItem[]
+  lectureProgresses   LectureProgress[]
+  courseProgresses    CourseProgress[]
+  certificates        Certificate[]
+  sentMessages        ChatMessage[]      @relation("Sender")
+  receivedMessages    ChatMessage[]      @relation("Receiver")
+  courseInstructors   CourseInstructor[]
+  instructorStats     InstructorStats[]
+  instructorPayouts   InstructorPayout[]
+  courseResources     CourseResource[]
+  
+  // Back-relations for auditing
+  deletedUsers         User[]              @relation("UsersDeletedByAdmin")
+  createdCategories    Category[]          @relation("CreatedCategories")
+  updatedCategories    Category[]          @relation("UpdatedCategories")
+  deletedCategories    Category[]          @relation("DeletedCategories")
+  createdCourses       Course[]            @relation("CreatedCourses")
+  updatedCourses       Course[]            @relation("UpdatedCourses")
+  deletedCourses       Course[]            @relation("DeletedCourses")
+  createdLectures      Lecture[]           @relation("CreatedLectures")
+  updatedLectures      Lecture[]           @relation("UpdatedLectures")
+  deletedLectures      Lecture[]           @relation("DeletedLectures")
+  createdCoupons       Coupon[]            @relation("CreatedCoupons")
+  updatedCoupons       Coupon[]            @relation("UpdatedCoupons")
+  deletedCoupons       Coupon[]            @relation("DeletedCoupons")
+  createdTags          Tag[]               @relation("CreatedTags")
+  updatedTags          Tag[]               @relation("UpdatedTags")
+  deletedTags          Tag[]               @relation("DeletedTags")
+  
+  // Existing relations
   createdLanguages     Language[]          @relation("CreatedByLanguage")
   updatedLanguages     Language[]          @relation("UpdatedByLanguage")
   createdUserTrans     UserTranslation[]   @relation("CreatedByUserTranslation")
   updatedUserTrans     UserTranslation[]   @relation("UpdatedByUserTranslation")
   createdLectureTrans  LectureTranslation[] @relation("CreatedByLectureTranslation")
   updatedLectureTrans  LectureTranslation[] @relation("UpdatedByLectureTranslation")
-  createdCourseTrans   CourseTranslation[]  @relation("CreatedByCourseTranslation")
-  updatedCourseTrans   CourseTranslation[]  @relation("UpdatedByCourseTranslation")
+  createdCourseTrans   CourseTranslation[]   @relation("CreatedByCourseTranslation")
+  updatedCourseTrans   CourseTranslation[]   @relation("UpdatedByCourseTranslation")
   createdCategoryTrans CategoryTranslation[] @relation("CreatedByCategoryTranslation")
   updatedCategoryTrans CategoryTranslation[] @relation("UpdatedByCategoryTranslation")
   createdRoles         Role[]              @relation("CreatedByRole")
   updatedRoles         Role[]              @relation("UpdatedByRole")
   createdPermissions   Permission[]        @relation("CreatedByPermission")
   updatedPermissions   Permission[]        @relation("UpdatedByPermission")
+
+  @@unique([email, password])
 }
 
 model Profile {
-  id          Int     @id @default(autoincrement())
-  userId      Int     @unique
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique
   avatarUrl   String?
-  socialLinks Json?  @db.JsonB
+  socialLinks Json?    @db.JsonB
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model UserAuthProvider {
   id                Int       @id @default(autoincrement())
-  userId            Int
-  provider          String
+  userId            Int       @unique
+  provider          AuthProvider
   providerUserId    String
   emailFromProvider String?
   accessToken       String?   @db.VarChar(1000)
@@ -153,6 +191,7 @@ model UserAuthProvider {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
+  @@unique([emailFromProvider, provider])
   @@index([userId, provider])
 }
 
@@ -161,9 +200,19 @@ model UserAuthProvider {
 // ========================================
 
 model Category {
-  id       Int     @id @default(autoincrement())
-  name     String
-  parentId Int?
+  id          Int       @id @default(autoincrement())
+  name        String
+  parentId    Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById Int?
+  updatedById Int?
+  deletedById Int?
+
+  createdBy User? @relation("CreatedCategories", fields: [createdById], references: [id])
+  updatedBy User? @relation("UpdatedCategories", fields: [updatedById], references: [id])
+  deletedBy User? @relation("DeletedCategories", fields: [deletedById], references: [id])
 
   parent       Category?             @relation("SubCategories", fields: [parentId], references: [id])
   children     Category[]            @relation("SubCategories")
@@ -172,20 +221,29 @@ model Category {
 }
 
 model Course {
-  id           Int       @id @default(autoincrement())
-  categoryId   Int
-  title        String
-  slug         String    @unique
-  shortDesc    String?
-  fullDesc     String?
-  priceCents   Int
-  currency     String?
-  isPublished  Boolean   @default(false)
-  publishedAt  DateTime?
-  thumbnailUrl String?
-  level        String?
-  language     String?
-  createdAt    DateTime  @default(now())
+  id             Int       @id @default(autoincrement())
+  categoryId     Int
+  title          String
+  slug           String    @unique
+  shortDesc      String?
+  fullDesc       String?
+  priceCents     Int
+  currency       String?
+  isPublished    Boolean   @default(false)
+  publishedAt    DateTime?
+  thumbnailUrl   String?
+  level          String?
+  language       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdById    Int?
+  updatedById    Int?
+  deletedById    Int?
+
+  createdBy User? @relation("CreatedCourses", fields: [createdById], references: [id])
+  updatedBy User? @relation("UpdatedCourses", fields: [updatedById], references: [id])
+  deletedBy User? @relation("DeletedCourses", fields: [deletedById], references: [id])
 
   category         Category           @relation(fields: [categoryId], references: [id])
   lectures         Lecture[]
@@ -195,7 +253,7 @@ model Course {
   translations     CourseTranslation[]
   snapshots        CourseSnapshot[]
   questions        Question[]
-  courseTags       CourseTag[]
+  tags             Tag[]
   cartItems        CartItem[]
   courseProgresses CourseProgress[]
   certificates     Certificate[]
@@ -213,8 +271,18 @@ model Lecture {
   durationSeconds Int?
   orderIndex      Int?
   isPreview       Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
+  createdById     Int?
+  updatedById     Int?
+  deletedById     Int?
+  
+  createdBy User? @relation("CreatedLectures", fields: [createdById], references: [id])
+  updatedBy User? @relation("UpdatedLectures", fields: [updatedById], references: [id])
+  deletedBy User? @relation("DeletedLectures", fields: [deletedById], references: [id])
 
-  course          Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course          Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
   mediaJobs       MediaJob[]
   translations    LectureTranslation[]
   questionVotes   QuestionVote[]
@@ -227,17 +295,18 @@ model Lecture {
 // ========================================
 
 model Enrollment {
-  id          Int              @id @default(autoincrement())
-  userId      Int
-  courseId    Int
-  purchasedAt DateTime         @default(now())
-  amountCents Int
-  status      EnrollmentStatus
+  id            Int              @id @default(autoincrement())
+  userId        Int
+  courseId      Int
+  purchasedAt   DateTime         @default(now())
+  amountCents   Int
+  status        EnrollmentStatus
+  updatedAt     DateTime         @updatedAt
 
-  user             User             @relation(fields: [userId], references: [id])
-  course           Course           @relation(fields: [courseId], references: [id])
-  transactionItems TransactionItem[]
-  snapshots        CourseSnapshot[]
+  user            User             @relation(fields: [userId], references: [id])
+  course          Course           @relation(fields: [courseId], references: [id])
+  transactionItem TransactionItem?
+  snapshots       CourseSnapshot[]
 }
 
 model Transaction {
@@ -248,17 +317,19 @@ model Transaction {
   provider          String
   providerPaymentId String?
   createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   user  User              @relation(fields: [userId], references: [id])
   items TransactionItem[]
 }
 
 model TransactionItem {
-  id            Int        @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   transactionId Int
   courseId      Int
-  enrollmentId  Int        @unique
+  enrollmentId  Int      @unique
   amountCents   Int
+  createdAt     DateTime @default(now())
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
   course      Course      @relation(fields: [courseId], references: [id])
@@ -272,6 +343,7 @@ model Review {
   rating    Int
   comment   String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -280,13 +352,23 @@ model Review {
 }
 
 model Coupon {
-  id              Int      @id @default(autoincrement())
-  code            String   @unique
+  id              Int       @id @default(autoincrement())
+  code            String    @unique
   discountPercent Int
   validFrom       DateTime
   validTo         DateTime
   usageLimit      Int?
-  usedCount       Int      @default(0)
+  usedCount       Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdById     Int?
+  updatedById     Int?
+  deletedById     Int?
+
+  createdBy User? @relation("CreatedCoupons", fields: [createdById], references: [id])
+  updatedBy User? @relation("UpdatedCoupons", fields: [updatedById], references: [id])
+  deletedBy User? @relation("DeletedCoupons", fields: [deletedById], references: [id])
 }
 
 model CartItem {
@@ -309,13 +391,14 @@ model CartItem {
 // ========================================
 
 model Question {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   courseId  Int
   userId    Int
   title     String
   content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   course        Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -326,14 +409,15 @@ model Question {
 }
 
 model Answer {
-  id           Int      @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   questionId   Int
   userId       Int
   content      String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  isInstructor Boolean  @default(false)
-  isAccepted   Boolean  @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  isInstructor Boolean   @default(false)
+  isAccepted   Boolean   @default(false)
 
   question    Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -395,6 +479,7 @@ model LectureProgress {
   progress      Decimal  @default(0.00) @db.Decimal(5, 2)
   isCompleted   Boolean  @default(false)
   lastWatchedAt DateTime
+  createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -410,6 +495,7 @@ model CourseProgress {
   totalLectures     Int
   completedLectures Int      @default(0)
   progress          Decimal  @default(0.00) @db.Decimal(5, 2)
+  createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -419,11 +505,11 @@ model CourseProgress {
 }
 
 model Certificate {
-  id             Int      @id @default(autoincrement())
+  id             Int                 @id @default(autoincrement())
   userId         Int
   courseId       Int
   templateId     Int
-  certificateUrl String   @db.VarChar(500)
+  certificateUrl String              @db.VarChar(500)
   issuedAt       DateTime
 
   user     User                @relation(fields: [userId], references: [id])
@@ -434,8 +520,9 @@ model Certificate {
 model CertificateTemplate {
   id        Int      @id @default(autoincrement())
   name      String   @db.VarChar(100)
-  layout    Json    @db.JsonB
+  layout    Json     @db.JsonB
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   certificates Certificate[]
 }
@@ -448,37 +535,43 @@ model RefreshToken {
   id        Int      @id @default(autoincrement())
   userId    Int
   deviceId  Int      @unique
-  tokenHash String
+  token String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
 }
 
 model Device {
-  id                Int           @id @default(autoincrement())
+  id                Int       @id @default(autoincrement())
   userId            Int
-  deviceFingerprint String        @unique
+  deviceFingerprint String?    @unique
   deviceName        String?
   deviceType        String?
   ipAddress         String?
   userAgent         String?
   lastLoginAt       DateTime?
-  isActive          Boolean       @default(true)
-  createdAt         DateTime      @default(now())
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   refreshToken RefreshToken?
+
+  @@unique([userId, deviceName, deviceType])
 }
 
 model Notification {
   id        Int      @id @default(autoincrement())
   userId    Int
   type      String
-  payload   Json   @db.JsonB
+  payload   Json     @db.JsonB
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -488,7 +581,7 @@ model MediaJob {
   lectureId Int
   status    MediaJobStatus
   sourceUrl String
-  outputs   Json?  @db.JsonB
+  outputs   Json?          @db.JsonB
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
@@ -508,20 +601,20 @@ model AuditLog {
 }
 
 model VerificationCode {
-  id        Int                @id @default(autoincrement())
+  id        Int                  @id @default(autoincrement())
   email     String
   code      String
   type      VerificationCodeType
   expiresAt DateTime
-  createdAt DateTime           @default(now())
+  createdAt DateTime             @default(now())
 
-  @@index([email, code, type])
+  @@unique([email, type])
   @@index([expiresAt])
 }
 
 model CourseSnapshot {
-  id           Int       @id @default(autoincrement())
-  enrollmentId Int       @unique
+  id           Int        @id @default(autoincrement())
+  enrollmentId Int        @unique
   courseId     Int?
   title        String
   slug         String
@@ -532,7 +625,7 @@ model CourseSnapshot {
   currency     String
   level        String
   language     String
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime   @default(now())
 
   enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
   course     Course?    @relation(fields: [courseId], references: [id], onDelete: SetNull)
@@ -549,6 +642,8 @@ model ChatMessage {
   receiverId Int?
   message    String
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime? @updatedAt
+  deletedAt  DateTime?
 
   room     ChatRoom? @relation(fields: [roomId], references: [id])
   sender   User      @relation("Sender", fields: [senderId], references: [id])
@@ -559,6 +654,7 @@ model ChatRoom {
   id        Int      @id @default(autoincrement())
   name      String   @db.VarChar(255)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   messages ChatMessage[]
 }
@@ -568,23 +664,21 @@ model ChatRoom {
 // ========================================
 
 model Tag {
-  id         Int         @id @default(autoincrement())
-  name       String      @unique @db.VarChar(100)
-  slug       String      @unique @db.VarChar(120)
-  createdAt  DateTime    @default(now())
-  courseTags CourseTag[]
-}
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(100)
+  slug        String    @unique @db.VarChar(120)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById Int?
+  updatedById Int?
+  deletedById Int?
 
-model CourseTag {
-  id        Int      @id @default(autoincrement())
-  courseId  Int
-  tagId     Int
-  createdAt DateTime @default(now())
+  createdBy User? @relation("CreatedTags", fields: [createdById], references: [id])
+  updatedBy User? @relation("UpdatedTags", fields: [updatedById], references: [id])
+  deletedBy User? @relation("DeletedTags", fields: [deletedById], references: [id])
 
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  @@unique([courseId, tagId])
+  courses Course[]
 }
 
 // ========================================
@@ -610,6 +704,7 @@ model InstructorStats {
   courseId          Int
   totalStudents     Int      @default(0)
   totalRevenueCents BigInt   @default(0)
+  createdAt         DateTime @default(now())
   lastUpdated       DateTime @updatedAt
 
   instructor User   @relation(fields: [instructorId], references: [id], onDelete: Cascade)
@@ -627,6 +722,7 @@ model InstructorPayout {
   approvedAt   DateTime?
   paidAt       DateTime?
   note         String?
+  updatedAt    DateTime               @updatedAt
 
   instructor User @relation(fields: [instructorId], references: [id])
 }
@@ -639,6 +735,7 @@ model CourseResource {
   resourceUrl  String   @db.VarChar(1000)
   resourceType String
   uploadedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   instructor User   @relation(fields: [instructorId], references: [id])
@@ -763,13 +860,14 @@ model Role {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  createdBy   User?         @relation("CreatedByRole", fields: [createdById], references: [id])
-  updatedBy   User?         @relation("UpdatedByRole", fields: [updatedById], references: [id])
+  createdBy   User?        @relation("CreatedByRole", fields: [createdById], references: [id])
+  updatedBy   User?        @relation("UpdatedByRole", fields: [updatedById], references: [id])
+  users       User[]
   permissions Permission[]
 }
 
 model Permission {
-  id          Int         @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   name        String
   description String?
   path        String?
@@ -777,10 +875,10 @@ model Permission {
   createdById Int?
   updatedById Int?
   deletedAt   DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  createdBy User?   @relation("CreatedByPermission", fields: [createdById], references: [id])
-  updatedBy User?   @relation("UpdatedByPermission", fields: [updatedById], references: [id])
+  createdBy User?  @relation("CreatedByPermission", fields: [createdById], references: [id])
+  updatedBy User?  @relation("UpdatedByPermission", fields: [updatedById], references: [id])
   roles     Role[]
 }
