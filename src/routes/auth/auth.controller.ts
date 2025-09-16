@@ -3,12 +3,14 @@ import { Body, Controller, Get, NotFoundException, Param, Post, Query, Res } fro
 import { Request, Response } from 'express'
 import { ZodResponse } from 'nestjs-zod'
 import {
+  ForgetPasswordBodyDTO,
   GetLinkResDTO,
   LoginBodyDTO,
   LoginResDTO,
   LogoutBodyDTO,
   RegisterBodyDTO,
   RegisterResDTO,
+  ResetPasswordBodyDTO,
   SendOTPBodyDTO,
 } from 'src/routes/auth/auth.dto'
 
@@ -59,6 +61,20 @@ export class AuthController {
   @ZodResponse({ type: RegisterResDTO })
   register(@Body() body: RegisterBodyDTO) {
     return this.authService.register(body)
+  }
+
+  @Post('forget-password')
+  @ZodResponse({ type: MessageResDTO })
+  @IsPublic()
+  forgetPassword(@Body() body: ForgetPasswordBodyDTO) {
+    return this.authService.forgetPassword(body)
+  }
+
+  @Post('reset-password')
+  @ZodResponse({ type: MessageResDTO })
+  @IsPublic()
+  resetPassword(@Body() body: ResetPasswordBodyDTO) {
+    return this.authService.resetPassword(body)
   }
 
   // @Get('google/link')
