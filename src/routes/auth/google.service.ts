@@ -132,7 +132,7 @@ export class GoogleService {
     )
   }
 
-  getGoogleLink(deviceInfo: DeviceInfoType) {
+  getGoogleLink(deviceInfo: DeviceInfoType & { deviceFingerprint: string }) {
     const scope = ['https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile']
 
     //Chuyển object sang string base64 để an toàn bỏ lên url
@@ -177,10 +177,10 @@ export class GoogleService {
     )
   }
 
-  private parseState(state: string): DeviceInfoType | null {
+  private parseState(state: string): (DeviceInfoType & { deviceFingerprint: string }) | null {
     if (!state) return null
     try {
-      return JSON.parse(Buffer.from(state, 'base64').toString()) as DeviceInfoType
+      return JSON.parse(Buffer.from(state, 'base64').toString()) as DeviceInfoType & { deviceFingerprint: string }
     } catch (err) {
       console.error('error parsing state', err)
       return null

@@ -1,13 +1,7 @@
-import { HttpStatus, UnprocessableEntityException } from '@nestjs/common'
+import { HttpStatus, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common'
 
 export const EmailNotFoundException = new UnprocessableEntityException({
   message: 'Error.EmailNotFound',
-  path: 'email',
-  statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-})
-
-export const EmailNotFoundOrInvalidPasswordException = new UnprocessableEntityException({
-  message: 'Error.EmailNotFoundOrInvalidPassword',
   path: 'email',
   statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
 })
@@ -49,3 +43,9 @@ export const OTPExpiredException = new UnprocessableEntityException({
 })
 
 export const GoogleUserInfoError = new Error('Error.FailedToGetGoogleUserInfo')
+
+export const InvalidRefreshTokenException = new UnauthorizedException({
+  message: 'Error.InvalidRefreshToken',
+  path: 'refreshToken',
+  statusCode: HttpStatus.UNAUTHORIZED,
+})

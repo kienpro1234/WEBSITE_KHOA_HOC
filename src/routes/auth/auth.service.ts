@@ -2,13 +2,15 @@ import { Injectable } from '@nestjs/common'
 import {
   AccountAlreadyExistsException,
   EmailNotFoundException,
-  EmailNotFoundOrInvalidPasswordException,
   FailedToSendOTPException,
+  InvalidPasswordException,
+  InvalidRefreshTokenException,
   InvalidVerificationCodeException,
   OTPExpiredException,
 } from 'src/routes/auth/auth.error'
 import {
   LoginBodyType,
+  LogoutBodyType,
   RefreshTokenType,
   RegisterBodyType,
   SendOTPBodyType,
@@ -47,7 +49,10 @@ export class AuthService {
     // 1, Kiểm tra trên device này đã có refreshToken chưa, nếu chưa hoặc refreshTOken hết hạn thì xóa cũ tạo mới, nếu đã có thì lấy ra dùng.
     let refreshToken: RefreshTokenType['token'] | null = null
     const refreshTokenDb = await this.authRepo.findUniqueRefreshToken({
-      deviceId,
+      userId_deviceId: {
+        deviceId,
+        userId,
+      },
     })
 
     // Nếu có và chưa hết hạn thì dùng refreshToken cũ
@@ -89,22 +94,24 @@ export class AuthService {
     const { deviceName, deviceType, ip, userAgent } = body.deviceInfo
 
     // Do 1 user có thể có nhiều email(oauth, local), nên truy vấn unique theo email, password
-    const hashedPassword = await this.hashingService.hash(body.password)
-    const user = await this.authRepo.findUniqueUserIncludeRole({
-      email_password: {
-        email: body.email,
-        password: hashedPassword,
-      },
-    })
+    //Đổi logic ở đây , vì đây là login dành riêng cho tài khoản local, nên phải lọc ra tài khoản mà authProvider là null
+
+    const user = await this.authRepo.findUniqueUserLocalInClueRole(body.email)
 
     if (!user) {
-      throw EmailNotFoundOrInvalidPasswordException
+      throw EmailNotFoundException
+    }
+
+    const isPasswordCorrect = await this.hashingService.compare(body.password, user.password)
+
+    if (!isPasswordCorrect) {
+      throw InvalidPasswordException
     }
 
     //2, Tạo mới device
     const device = await this.authRepo.createOrupdateDevice({
       userId: user.id,
-      device: { deviceName, deviceType, ip, userAgent },
+      deviceInfo: { deviceName, deviceType, ip, userAgent, deviceFingerprint: body.deviceFingerprint },
     })
 
     const tokens = await this.generateTokens({
@@ -117,6 +124,26 @@ export class AuthService {
     return tokens
   }
 
+  async logout(body: LogoutBodyType & { deviceInfo: DeviceInfoType }) {
+    const { deviceInfo, refreshToken } = body
+    //logout thì xóa luôn refreshToken và chuyển device isActive là false
+    //Liệu có thể xóa theo cặp unique deviceId và userId hay xóa theo unique token ?
+    try {
+      const decodedRefreshToken = await this.tokenService.verifyRefreshToken(refreshToken)
+
+      await this.authRepo.deleteRefreshToken({ token: refreshToken })
+      await this.authRepo.createOrupdateDevice({
+        deviceInfo: { ...deviceInfo, deviceFingerprint: body.deviceFingerprint },
+        userId: decodedRefreshToken.userId,
+        isLogout: true,
+      })
+
+      return { message: 'Logout successfully' }
+    } catch {
+      throw InvalidRefreshTokenException
+    }
+  }
+
   async sendOTP(body: SendOTPBodyType) {
     //1, Kiểm tra email đã tồn tại hay chưa
     // Ở đây có thể có nhiều tài khoản có cùng email nhưng k sao, cứ gửi đến email đấy, chỗ nào đang ở giao diện xác thực thì mới lấy được mã otp để xác thực tài khoản
@@ -127,7 +154,7 @@ export class AuthService {
     const users = await this.authRepo.findUsersByEmailIncludeAuthProvider(body.email)
 
     //Nếu không tìm thấy tài khoản nào thì báo lỗi
-    if (users.length === 0) {
+    if (users.length === 0 && body.type !== TypeOfVerificationCode.REGISTER) {
       throw EmailNotFoundException
     }
 
@@ -225,7 +252,7 @@ export class AuthService {
   // 👇 PHƯƠNG THỨC CHUNG MỚI
   async processSocialLogin(
     profile: { email?: string; name: string; providerUserId?: string; provider: AuthProviderType },
-    deviceInfo: DeviceInfoType | null,
+    deviceInfo: (DeviceInfoType & { deviceFingerprint: string }) | null,
   ) {
     // Tìm xem UserAuthProvider này có trong db chưa, nếu chưa tạo mới user sau đó tạo mới UserAuthProvider
     //kiểm tra xem nếu email tồn tại thì tìm kiếm unique theo emailFromProvider và provider
@@ -275,11 +302,12 @@ export class AuthService {
 
     // Giờ là dù userAUthProvider đã tồn tại hoặc tạo mới thì đến đây thì tính là đã có userAuthProvider , thì tạo device, tạo token để đăng nhập
     const device = await this.authRepo.createOrupdateDevice({
-      device: {
+      deviceInfo: {
         deviceName: deviceInfo?.deviceName ?? 'Unknown',
         deviceType: deviceInfo?.deviceType ?? 'Unknown',
         ip: deviceInfo?.ip ?? 'Unknown',
         userAgent: deviceInfo?.userAgent ?? 'Unknown',
+        deviceFingerprint: deviceInfo?.deviceFingerprint ?? 'Unknown',
       },
       userId: userAuthProvider.userId,
     })
