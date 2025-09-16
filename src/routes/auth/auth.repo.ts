@@ -5,13 +5,13 @@ import {
   RefreshTokenType,
   UserAUthProviderIncludeUserAndRoleType,
   UserAuthProviderType,
-  UserType,
   VerificationCodeType,
 } from 'src/routes/auth/auth.model'
 
 import { SerializeAll } from 'src/shared/decorators/serialize.decorator'
 
 import { RoleType } from 'src/shared/model/shared-role.model'
+import { UserType } from 'src/shared/model/shared-user.model'
 
 import { PrismaService } from 'src/shared/services/prisma.service'
 
@@ -24,12 +24,6 @@ export class AuthRepo {
     return this.prismaService.user.findUnique({
       where,
       include: { role: true },
-    }) as any
-  }
-
-  findUniqueUser(where: Prisma.UserWhereUniqueInput): Promise<UserType | null> {
-    return this.prismaService.user.findUnique({
-      where,
     }) as any
   }
 
@@ -70,6 +64,16 @@ export class AuthRepo {
     }) as any
   }
 
+  //Phương thức này tìm tài khoản đăng kí trực tiếp trên hệ thống mà không dùng login bằng oauth
+  findUniqueUserLocalInClueRole(email: string): Promise<(UserType & { role: RoleType }) | null> {
+    return this.prismaService.user.findFirst({
+      where: { email, authProvider: null, deletedAt: null },
+      include: {
+        role: true,
+      },
+    }) as any
+  }
+
   findUniqueVerificationCode(where: Prisma.VerificationCodeWhereUniqueInput): Promise<VerificationCodeType | null> {
     return this.prismaService.verificationCode.findUnique({
       where,
@@ -82,38 +86,59 @@ export class AuthRepo {
     }) as any
   }
 
-  //Tạo hoặc update device, nếu nhận thấy cùng 1 người dùng, cùng 1 thiết bị, thì update lại thông tin, nếu khác thì tạo mới
+  //Thiết kế theo user-deviceInfo n-n, nếu chưa có deviceInfo thì tạo mới, và connect deviceInfo đó với user vừa đăng nhập, nếu đã có deviceInfo rồi thì update deviceInfo và connect với user vừa đăng nhập
   async createOrupdateDevice({
+    deviceInfo,
+    isLogout,
     userId,
-    device,
   }: {
     userId: number
-    device: { deviceName: string; deviceType: string; ip: string; userAgent: string }
+    deviceInfo: { deviceName: string; deviceType: string; ip: string; userAgent: string; deviceFingerprint: string }
+    isLogout?: boolean
   }) {
-    return this.prismaService.device.upsert({
+    const device = await this.prismaService.device.upsert({
       where: {
-        userId_deviceName_deviceType: {
+        deviceFingerprint: deviceInfo.deviceFingerprint,
+      },
+
+      create: {
+        deviceName: deviceInfo.deviceName,
+        deviceType: deviceInfo.deviceType,
+        deviceFingerprint: deviceInfo.deviceFingerprint,
+        isActive: true,
+        ipAddress: deviceInfo.ip,
+        userAgent: deviceInfo.userAgent,
+        lastLoginAt: new Date(),
+      },
+
+      update: {
+        isActive: isLogout ? false : true,
+        lastLoginAt: new Date(),
+        ipAddress: deviceInfo.ip,
+        userAgent: deviceInfo.userAgent,
+      },
+    })
+
+    await this.prismaService.userDevice.upsert({
+      where: {
+        userId_deviceId: {
           userId,
-          deviceName: device.deviceName,
-          deviceType: device.deviceType,
+          deviceId: device.id,
         },
       },
       create: {
         userId,
-        deviceName: device.deviceName,
-        deviceType: device.deviceType,
-        isActive: true,
-        ipAddress: device.ip,
-        userAgent: device.userAgent,
+        deviceId: device.id,
         lastLoginAt: new Date(),
+        isActive: true,
       },
       update: {
-        isActive: true,
+        isActive: isLogout ? false : true,
         lastLoginAt: new Date(),
-        ipAddress: device.ip,
-        userAgent: device.userAgent,
       },
     })
+
+    return device
   }
 
   async createRefreshToken(payload: { userId: number; deviceId: number; expiresAt: Date; token: string }) {

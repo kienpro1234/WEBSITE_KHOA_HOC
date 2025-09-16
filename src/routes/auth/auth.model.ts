@@ -7,12 +7,17 @@ export const LoginBodySchema = UserSchema.pick({
   email: true,
   password: true,
 }).extend({
-  deviceFingerprint: z.string().min(1).max(255).optional(),
+  deviceFingerprint: z.string().min(1).max(255),
 })
 
 export const LoginResSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string(),
+})
+
+export const LogoutBodySchema = z.object({
+  refreshToken: z.string(),
+  deviceFingerprint: z.string().min(1).max(255),
 })
 
 export const RegisterBodySchema = UserSchema.pick({
@@ -86,8 +91,8 @@ export const CreateUserAuthProviderBodySchema = UserAuthProviderSchema.pick({
   expiresAt: true,
 })
 
-export type UserType = z.infer<typeof UserSchema>
 export type LoginBodyType = z.infer<typeof LoginBodySchema>
+export type LogoutBodyType = z.infer<typeof LogoutBodySchema>
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
 export type SendOTPBodyType = z.infer<typeof SendOTPBodySchema>
 export type VerificationCodeType = z.infer<typeof VerificationCodeSchema>

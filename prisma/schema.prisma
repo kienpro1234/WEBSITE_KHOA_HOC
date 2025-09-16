@@ -91,6 +91,7 @@ model User {
   password         String
   name             String?
   bio              String?
+  avatar           String?
 
   stripeCustomerId String?
   createdAt        DateTime  @default(now())
@@ -111,7 +112,7 @@ model User {
   refreshTokens       RefreshToken[]
   notifications       Notification[]
   auditLogs           AuditLog[]
-  devices             Device[]
+  devices             UserDevice[]
   userTranslations    UserTranslation[]
   questions           Question[]
   answers             Answer[]
@@ -164,7 +165,7 @@ model User {
   updatedPermissions   Permission[]        @relation("UpdatedByPermission")
   deletedPermissions   Permission[]        @relation("DeletedByPermission")
 
-  @@unique([email, password])
+  
 }
 
 model Profile {
@@ -532,24 +533,27 @@ model CertificateTemplate {
 // SYSTEM & UTILITY MODELS
 // ========================================
 
+//logic refreshToken lúc login của mình là lúc login , tìm kiếm unique refreshToken này mà tìm thấy thì lấy luôn từ db ra dùng, k tạo mới, chưa có thì mới tạo mới, nên là hạn, ngày tạo vẫn như cũ không thay đổi
 model RefreshToken {
   id        Int      @id @default(autoincrement())
   userId    Int
-  deviceId  Int      @unique
-  token String
+  deviceId  Int      
+  token String       @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
+  // refreshToken sẽ riêng biệt với cặp unique userId, deviceId, Không thể kết nối với mỗi device id hay userId do 1 device có thể có nhiều user, 1 user có thể có nhiều device
+  device UserDevice @relation(fields: [userId,deviceId], references: [userId, deviceId], onDelete: Cascade)
+
+  //Để cặp này unique chứ không phải để riêng lẻ trong chúng, vì quan hệ giữa 2 thằng này là n-n, 1 user có thể có nhiều device và 1 device có thể có nhiều user.
   @@unique([userId, deviceId])
 }
 
 model Device {
   id                Int       @id @default(autoincrement())
-  userId            Int
-  deviceFingerprint String?    @unique
+  deviceFingerprint String    @unique
   deviceName        String?
   deviceType        String?
   ipAddress         String?
@@ -559,10 +563,24 @@ model Device {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  users         UserDevice[]       
+  
+}
+
+model UserDevice {
+  userId Int  
+  deviceId Int 
+  isActive Boolean @default(true)
+  lastLoginAt DateTime?
+
+  //Chuyển refreshToken từ Device xuống đây để ứng với cặp userId , deviceId thì có 1 refreshToken chứ không phải là 1 device chỉ có 1 refreshToken nữa, vì nếu thế thì ví dụ 3 user đăng nhập trên cùng 1 thiết bị sẽ bị dùng chung refreshToken -> sai
+  // -> lúc login bất cứ ở đâu thì tạo UserDevice trước, rồi tạo refreshToken kết nối với refreshToken này
   refreshToken RefreshToken?
 
-  @@unique([userId, deviceName, deviceType])
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, deviceId])
 }
 
 model Notification {

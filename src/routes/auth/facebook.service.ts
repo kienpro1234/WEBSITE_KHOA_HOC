@@ -10,7 +10,7 @@ import { AuthProvider } from 'src/shared/constants/auth.constant'
 export class FacebookService {
   constructor(private readonly authService: AuthService) {}
 
-  getFacebookLink(deviceInfo: DeviceInfoType) {
+  getFacebookLink(deviceInfo: DeviceInfoType & { deviceFingerprint: string }) {
     const stateString = Buffer.from(JSON.stringify(deviceInfo)).toString('base64')
     const scope = 'email,public_profile'
     const url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${envConfig.FACEBOOK_CLIENT_ID}&redirect_uri=${envConfig.FACEBOOK_REDIRECT_URI}&scope=${scope}&state=${stateString}`
@@ -55,10 +55,10 @@ export class FacebookService {
   }
 
   // Copy hàm parseState từ GoogleService vào đây
-  private parseState(state: string): DeviceInfoType | null {
+  private parseState(state: string): (DeviceInfoType & { deviceFingerprint: string }) | null {
     if (!state) return null
     try {
-      return JSON.parse(Buffer.from(state, 'base64').toString()) as DeviceInfoType
+      return JSON.parse(Buffer.from(state, 'base64').toString()) as DeviceInfoType & { deviceFingerprint: string }
     } catch (err) {
       console.error('error parsing state', err)
       return null

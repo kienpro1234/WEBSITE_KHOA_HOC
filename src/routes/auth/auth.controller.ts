@@ -6,6 +6,7 @@ import {
   GetLinkResDTO,
   LoginBodyDTO,
   LoginResDTO,
+  LogoutBodyDTO,
   RegisterBodyDTO,
   RegisterResDTO,
   SendOTPBodyDTO,
@@ -15,6 +16,7 @@ import { AuthService } from 'src/routes/auth/auth.service'
 import { FacebookService } from 'src/routes/auth/facebook.service'
 import { GoogleService } from 'src/routes/auth/google.service'
 import envConfig from 'src/shared/config'
+import { IsPublic } from 'src/shared/decorators/auth.decorator'
 import { DeviceInfo, DeviceInfoType } from 'src/shared/decorators/device-info.decorator'
 import { MessageResDTO } from 'src/shared/dtos/response.dto'
 
@@ -27,6 +29,7 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @IsPublic()
   @ZodResponse({ type: LoginResDTO })
   login(@Body() body: LoginBodyDTO, @DeviceInfo() deviceInfo: DeviceInfoType) {
     return this.authService.login({
@@ -35,13 +38,24 @@ export class AuthController {
     })
   }
 
+  @Post('logout')
+  @ZodResponse({ type: MessageResDTO })
+  logout(@DeviceInfo() deviceInfo: DeviceInfoType, @Body() body: LogoutBodyDTO) {
+    return this.authService.logout({
+      ...body,
+      deviceInfo,
+    })
+  }
+
   @Post('otp')
+  @IsPublic()
   @ZodResponse({ type: MessageResDTO })
   sendOTP(@Body() body: SendOTPBodyDTO) {
     return this.authService.sendOTP(body)
   }
 
   @Post('register')
+  @IsPublic()
   @ZodResponse({ type: RegisterResDTO })
   register(@Body() body: RegisterBodyDTO) {
     return this.authService.register(body)
@@ -69,14 +83,19 @@ export class AuthController {
   // }
 
   // 👇 Route lấy link động
-  @Get(':provider/link')
+  @Post(':provider/link')
+  @IsPublic()
   @ZodResponse({ type: GetLinkResDTO })
-  getSocialLink(@Param('provider') provider: string, @DeviceInfo() deviceInfo: DeviceInfoType) {
+  getSocialLink(
+    @Param('provider') provider: string,
+    @DeviceInfo() deviceInfo: DeviceInfoType,
+    @Body() body: { deviceFingerprint: string },
+  ) {
     switch (provider) {
       case 'google':
-        return this.googleService.getGoogleLink(deviceInfo)
+        return this.googleService.getGoogleLink({ ...deviceInfo, deviceFingerprint: body.deviceFingerprint })
       case 'facebook':
-        return this.facebookService.getFacebookLink(deviceInfo)
+        return this.facebookService.getFacebookLink({ ...deviceInfo, deviceFingerprint: body.deviceFingerprint })
       default:
         throw new NotFoundException('Provider not found')
     }
@@ -84,6 +103,7 @@ export class AuthController {
 
   // 👇 Route callback động
   @Get(':provider/callback')
+  @IsPublic()
   async socialCallBack(
     @Param('provider') provider: string,
     @Query('code') code: string,
