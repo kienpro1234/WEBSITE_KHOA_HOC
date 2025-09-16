@@ -91,6 +91,17 @@ export const CreateUserAuthProviderBodySchema = UserAuthProviderSchema.pick({
   expiresAt: true,
 })
 
+export const ForgetPasswordBodySchema = UserSchema.pick({
+  email: true,
+})
+
+export const ResetPasswordBodySchema = UserSchema.pick({
+  email: true,
+  password: true,
+}).extend({
+  code: z.string().length(6),
+})
+
 export type LoginBodyType = z.infer<typeof LoginBodySchema>
 export type LogoutBodyType = z.infer<typeof LogoutBodySchema>
 export type RegisterBodyType = z.infer<typeof RegisterBodySchema>
@@ -101,3 +112,5 @@ export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>
 export type UserAuthProviderType = z.infer<typeof UserAuthProviderSchema>
 export type CreateUserAuthProviderBodyType = z.infer<typeof CreateUserAuthProviderBodySchema>
 export type UserAUthProviderIncludeUserAndRoleType = z.infer<typeof UserAUthProviderIncludeUserAndRole>
+export type ForgetPasswordBodyType = z.infer<typeof ForgetPasswordBodySchema>
+export type ResetPasswordBodyType = z.infer<typeof ResetPasswordBodySchema>

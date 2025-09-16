@@ -7,6 +7,7 @@ import {
   UserAuthProviderType,
   VerificationCodeType,
 } from 'src/routes/auth/auth.model'
+import { UserNotFoundException } from 'src/routes/profile/profile.error'
 
 import { SerializeAll } from 'src/shared/decorators/serialize.decorator'
 
@@ -65,7 +66,8 @@ export class AuthRepo {
   }
 
   //Phương thức này tìm tài khoản đăng kí trực tiếp trên hệ thống mà không dùng login bằng oauth
-  findUniqueUserLocalInClueRole(email: string): Promise<(UserType & { role: RoleType }) | null> {
+  //Đã đánh index email nên lọc qua email nhanh hơn k cần lo
+  findUniqueUserLocalIncludeRole(email: string): Promise<(UserType & { role: RoleType }) | null> {
     return this.prismaService.user.findFirst({
       where: { email, authProvider: null, deletedAt: null },
       include: {
@@ -215,5 +217,39 @@ export class AuthRepo {
     return this.prismaService.refreshToken.delete({
       where,
     })
+  }
+
+  // Chỉ tài khoản local(tài khoản của hệ thống) mới dùng được tính năng này, tài khoản log từ oauth không dùng được
+  async resetPassword({
+    email,
+    hashedPassword,
+    verificationCodeId,
+  }: {
+    email: string
+    hashedPassword: string
+    verificationCodeId: number
+  }) {
+    const user = await this.findUniqueUserLocalIncludeRole(email)
+
+    if (!user) {
+      throw UserNotFoundException
+    }
+    await this.prismaService.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        password: hashedPassword,
+      },
+    })
+
+    //3, Xóa otp code
+    await this.deleteVerificationCode({
+      id: verificationCodeId,
+    })
+
+    return {
+      message: 'Success.ResetPassword',
+    }
   }
 }

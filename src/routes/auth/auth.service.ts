@@ -9,10 +9,12 @@ import {
   OTPExpiredException,
 } from 'src/routes/auth/auth.error'
 import {
+  ForgetPasswordBodyType,
   LoginBodyType,
   LogoutBodyType,
   RefreshTokenType,
   RegisterBodyType,
+  ResetPasswordBodyType,
   SendOTPBodyType,
   UserAUthProviderIncludeUserAndRoleType,
 } from 'src/routes/auth/auth.model'
@@ -34,6 +36,7 @@ import ms, { StringValue } from 'ms'
 import { EmailService } from 'src/shared/services/email.service'
 import { SharedRoleRepo } from 'src/shared/repositories/shared-role.repo'
 import { v4 as uuidv4 } from 'uuid'
+import { UserNotFoundException } from 'src/routes/profile/profile.error'
 @Injectable()
 export class AuthService {
   constructor(
@@ -96,7 +99,7 @@ export class AuthService {
     // Do 1 user có thể có nhiều email(oauth, local), nên truy vấn unique theo email, password
     //Đổi logic ở đây , vì đây là login dành riêng cho tài khoản local, nên phải lọc ra tài khoản mà authProvider là null
 
-    const user = await this.authRepo.findUniqueUserLocalInClueRole(body.email)
+    const user = await this.authRepo.findUniqueUserLocalIncludeRole(body.email)
 
     if (!user) {
       throw EmailNotFoundException
@@ -144,6 +147,7 @@ export class AuthService {
     }
   }
 
+  //Dùng cho verify email ,...
   async sendOTP(body: SendOTPBodyType) {
     //1, Kiểm tra email đã tồn tại hay chưa
     // Ở đây có thể có nhiều tài khoản có cùng email nhưng k sao, cứ gửi đến email đấy, chỗ nào đang ở giao diện xác thực thì mới lấy được mã otp để xác thực tài khoản
@@ -319,5 +323,30 @@ export class AuthService {
       roleName: userAuthProvider.user.role.name,
       userId: userAuthProvider.userId,
     })
+  }
+
+  async forgetPassword({ email }: ForgetPasswordBodyType) {
+    // Kiểm tra có tài khoản local với email này tồn tại không
+    const userLocal = await this.authRepo.findUniqueUserLocalIncludeRole(email)
+
+    if (!userLocal) {
+      throw UserNotFoundException
+    }
+
+    // Nếu tồn tại tài khoản local ứng với email này thì send otp để xác minh đến email
+    return this.sendOTP({ email, type: TypeOfVerificationCode.FORGET_PASSWORD })
+  }
+
+  async resetPassword({ email, password, code }: ResetPasswordBodyType) {
+    // Kiểm tra otp
+    const verificationCode = await this.validateVerificationCode({
+      code,
+      email,
+      type: TypeOfVerificationCode.FORGET_PASSWORD,
+    })
+
+    const hashedPassword = await this.hashingService.hash(password)
+
+    return this.authRepo.resetPassword({ email, hashedPassword, verificationCodeId: verificationCode.id })
   }
 }

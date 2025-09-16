@@ -165,7 +165,7 @@ model User {
   updatedPermissions   Permission[]        @relation("UpdatedByPermission")
   deletedPermissions   Permission[]        @relation("DeletedByPermission")
 
-  
+ @@index([email])
 }
 
 model Profile {
