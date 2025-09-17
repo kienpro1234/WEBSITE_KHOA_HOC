@@ -8,6 +8,8 @@ import {
   LoginBodyDTO,
   LoginResDTO,
   LogoutBodyDTO,
+  RefreshTokenBodyDTO,
+  RefreshTokenResDTO,
   RegisterBodyDTO,
   RegisterResDTO,
   ResetPasswordBodyDTO,
@@ -75,6 +77,14 @@ export class AuthController {
   @IsPublic()
   resetPassword(@Body() body: ResetPasswordBodyDTO) {
     return this.authService.resetPassword(body)
+  }
+
+  //Test case: refresh xong thì có refreshToken mới, xóa cũ, kết nối với device cũ
+  @Post('refresh-token')
+  @IsPublic()
+  @ZodResponse({ type: RefreshTokenResDTO })
+  refreshToken(@Body() body: RefreshTokenBodyDTO, @DeviceInfo() deviceInfo: DeviceInfoType) {
+    return this.authService.refreshToken(body, deviceInfo)
   }
 
   // @Get('google/link')
