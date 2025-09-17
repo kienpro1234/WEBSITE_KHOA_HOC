@@ -3,6 +3,19 @@ import { RoleSchema } from 'src/shared/model/shared-role.model'
 import { UserSchema } from 'src/shared/model/shared-user.model'
 import z from 'zod'
 
+export const DeviceSchema = z.object({
+  id: z.number(),
+  deviceFingerprint: z.string().min(1).max(255),
+  deviceName: z.string().min(1).max(255).nullable(),
+  deviceType: z.string().min(1).max(255).nullable(),
+  ipAddress: z.string().min(1).max(255).nullable(),
+  userAgent: z.string().min(1).max(255).nullable(),
+  lastLoginAt: z.iso.datetime().nullable(),
+  isActive: z.boolean().default(true),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+})
+
 export const LoginBodySchema = UserSchema.pick({
   email: true,
   password: true,
@@ -14,6 +27,12 @@ export const LoginResSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string(),
 })
+
+export const RefreshTokenBodySchema = z.object({
+  refreshToken: z.string(),
+  deviceFingerprint: z.string().min(1).max(255),
+})
+export const RefreshTokenResSchema = LoginResSchema
 
 export const LogoutBodySchema = z.object({
   refreshToken: z.string(),
@@ -114,3 +133,6 @@ export type CreateUserAuthProviderBodyType = z.infer<typeof CreateUserAuthProvid
 export type UserAUthProviderIncludeUserAndRoleType = z.infer<typeof UserAUthProviderIncludeUserAndRole>
 export type ForgetPasswordBodyType = z.infer<typeof ForgetPasswordBodySchema>
 export type ResetPasswordBodyType = z.infer<typeof ResetPasswordBodySchema>
+export type RefreshTokenBodyType = z.infer<typeof RefreshTokenBodySchema>
+export type RefreshTokenResType = z.infer<typeof RefreshTokenResSchema>
+export type DeviceType = z.infer<typeof DeviceSchema>

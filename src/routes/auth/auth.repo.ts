@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
   CreateUserAuthProviderBodyType,
+  DeviceType,
   RefreshTokenType,
   UserAUthProviderIncludeUserAndRoleType,
   UserAuthProviderType,
@@ -84,6 +85,27 @@ export class AuthRepo {
 
   findUniqueRefreshToken(where: Prisma.RefreshTokenWhereUniqueInput): Promise<RefreshTokenType | null> {
     return this.prismaService.refreshToken.findUnique({
+      where,
+    }) as any
+  }
+
+  findUniqueRefreshTokenIncludeUserRole(
+    where: Prisma.RefreshTokenWhereUniqueInput,
+  ): Promise<(RefreshTokenType & { user: UserType & { role: RoleType } }) | null> {
+    return this.prismaService.refreshToken.findUnique({
+      where,
+      include: {
+        user: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    }) as any
+  }
+
+  findUniqueDevice(where: { id: number } | { deviceFingerprint: string }): Promise<DeviceType | null> {
+    return this.prismaService.device.findUnique({
       where,
     }) as any
   }
@@ -229,6 +251,7 @@ export class AuthRepo {
     hashedPassword: string
     verificationCodeId: number
   }) {
+    //Tìm tài khoản local sau đó lấy id của tài khoản local này để update, chứ không update trực tiếp được vì tìm theo email thì có thể có nhiều email, có thể là oauth, nên phải lọc ở đây, tìm id để update
     const user = await this.findUniqueUserLocalIncludeRole(email)
 
     if (!user) {

@@ -534,6 +534,7 @@ model CertificateTemplate {
 // ========================================
 
 //logic refreshToken lúc login của mình là lúc login , tìm kiếm unique refreshToken này mà tìm thấy thì lấy luôn từ db ra dùng, k tạo mới, chưa có thì mới tạo mới, nên là hạn, ngày tạo vẫn như cũ không thay đổi
+//Tức là cùng 1 tài khoản nếu đăng nhập ở bất kì trình duyệt nào, miễn là cùng 1 thiết bị thì đều sẽ chỉ có đúng 1 refreshToken cho tài khoản đó thôi, mục đích là tiện cho việc quản lý thiết bị, có thể thu hồi refreshToken từ thiết bị khác
 model RefreshToken {
   id        Int      @id @default(autoincrement())
   userId    Int

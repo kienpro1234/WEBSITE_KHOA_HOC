@@ -5,6 +5,8 @@ import {
   LoginBodySchema,
   LoginResSchema,
   LogoutBodySchema,
+  RefreshTokenBodySchema,
+  RefreshTokenResSchema,
   RegisterBodySchema,
   RegisterResSchema,
   ResetPasswordBodySchema,
@@ -25,3 +27,6 @@ export class GetLinkResDTO extends createZodDto(GetLinkResSchema) {}
 
 export class ForgetPasswordBodyDTO extends createZodDto(ForgetPasswordBodySchema) {}
 export class ResetPasswordBodyDTO extends createZodDto(ResetPasswordBodySchema) {}
+
+export class RefreshTokenBodyDTO extends createZodDto(RefreshTokenBodySchema) {}
+export class RefreshTokenResDTO extends createZodDto(RefreshTokenResSchema) {}

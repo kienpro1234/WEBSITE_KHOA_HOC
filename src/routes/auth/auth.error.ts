@@ -49,3 +49,25 @@ export const InvalidRefreshTokenException = new UnauthorizedException({
   path: 'refreshToken',
   statusCode: HttpStatus.UNAUTHORIZED,
 })
+
+export const RefreshTokenExpiredException = new UnauthorizedException({
+  message: 'Error.RefreshTokenExpired',
+  path: 'refreshToken',
+  statusCode: HttpStatus.UNAUTHORIZED,
+})
+
+export const RefreshTokenNotFoundException = new UnauthorizedException({
+  message: 'Error.RefreshTokenNotFound',
+  path: 'refreshToken',
+  statusCode: HttpStatus.UNAUTHORIZED,
+})
+
+export const DeviceNotFoundException = new UnauthorizedException({
+  message: 'Error.DeviceNotFound',
+  statusCode: HttpStatus.UNAUTHORIZED,
+})
+
+export const AbnormalDeviceDetectionException = new UnauthorizedException({
+  message: 'Error.AbnormalDeviceDetection',
+  statusCode: HttpStatus.UNAUTHORIZED,
+})

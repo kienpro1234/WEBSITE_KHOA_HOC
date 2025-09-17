@@ -1,17 +1,23 @@
-import { Injectable } from '@nestjs/common'
+import { HttpException, Injectable } from '@nestjs/common'
 import {
+  AbnormalDeviceDetectionException,
   AccountAlreadyExistsException,
+  DeviceNotFoundException,
   EmailNotFoundException,
   FailedToSendOTPException,
   InvalidPasswordException,
   InvalidRefreshTokenException,
   InvalidVerificationCodeException,
   OTPExpiredException,
+  RefreshTokenExpiredException,
+  RefreshTokenNotFoundException,
 } from 'src/routes/auth/auth.error'
 import {
   ForgetPasswordBodyType,
   LoginBodyType,
   LogoutBodyType,
+  RefreshTokenBodyType,
+  RefreshTokenResType,
   RefreshTokenType,
   RegisterBodyType,
   ResetPasswordBodyType,
@@ -48,7 +54,13 @@ export class AuthService {
   ) {}
 
   // function này để tạo tokens khi đăng nhập
-  async generateTokens({ deviceId, roleId, roleName, userId }: AccessTokenPayloadCreate) {
+  async generateTokens({
+    deviceId,
+    roleId,
+    roleName,
+    userId,
+    isRefreshToken,
+  }: AccessTokenPayloadCreate & { isRefreshToken?: boolean }) {
     // 1, Kiểm tra trên device này đã có refreshToken chưa, nếu chưa hoặc refreshTOken hết hạn thì xóa cũ tạo mới, nếu đã có thì lấy ra dùng.
     let refreshToken: RefreshTokenType['token'] | null = null
     const refreshTokenDb = await this.authRepo.findUniqueRefreshToken({
@@ -58,13 +70,18 @@ export class AuthService {
       },
     })
 
-    // Nếu có và chưa hết hạn thì dùng refreshToken cũ
-    if (refreshTokenDb?.token && new Date(refreshTokenDb.expiresAt) > new Date()) {
+    // Nếu có và chưa hết hạn và không phải là yêu cầu refresh-token thì dùng refreshToken cũ
+    if (refreshTokenDb?.token && new Date(refreshTokenDb.expiresAt) > new Date() && !isRefreshToken) {
       refreshToken = refreshTokenDb.token
     }
 
     // Nếu đã hết hạn thì xóa cũ
-    if (refreshTokenDb?.token && new Date(refreshTokenDb.expiresAt) < new Date()) {
+    //Chỗ này đã check và xóa refreshToken đã hết hạn, nên k phải dùng cronjob check định kì, vẫn để refreshToken hết hạn ở đó, trường hợp query vào db còn lấy đc thông tin device, nếu người dùng vẫn dùng thiết bị cũ
+    // hoặc trường hợp refresh-token thì xóa đi refreshToken cũ để có thể tạo mới refreshToken ở dưới, tránh lỗi unique constranit
+    if (
+      (refreshTokenDb?.token && new Date(refreshTokenDb.expiresAt) < new Date()) ||
+      (refreshTokenDb && isRefreshToken)
+    ) {
       await this.authRepo.deleteRefreshToken({ id: refreshTokenDb.id })
     }
 
@@ -348,5 +365,71 @@ export class AuthService {
     const hashedPassword = await this.hashingService.hash(password)
 
     return this.authRepo.resetPassword({ email, hashedPassword, verificationCodeId: verificationCode.id })
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async refreshToken(body: RefreshTokenBodyType, deviceInfo: DeviceInfoType): Promise<RefreshTokenResType> {
+    try {
+      //Kiểm tra refreshToken này hợp lệ không
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { userId } = await this.tokenService.verifyRefreshToken(body.refreshToken)
+
+      //query để tìm thiết bị hiện tại của người dùng yêu cầu refresh token lên có đúng là thiết bị cũ(trùng với thông tin thiết bị trong refreshTokenInDb hay không, nếu trùng thì lấy thông tin thiết bị này, nếu không trùng thì là rơi vào trường hợp người dùng dùng lấy được đâu đó refreshTOken của máy khác về máy mình, sau đó gọi lên db, nên ngăn cấm điều này, còn trường hợp chính quy là đăng nhập vào hệ thống, có cặp tokens ở local, thì gửi request refresh-token lên sẽ luôn là thiết bị cũ), trường hợp này có thể k cần check vì chắc k xảy ra đâu
+
+      // Kiểm tra xem nếu device không tồn tại thì quăng lỗi cho bên FE logout người dùng ra đăng nhập lại, vì trường hợp này có thể là ăn trộm đc refreshToken ở đâu đó mà chưa đăng nhập vào hệ thốngm, có thể gọi là phát hiện hành động bất thường, chưa đăng nhập mà vẫn gọi refresh-token -> trả lỗi cho FE cưỡng chế logout
+      const device = await this.authRepo.findUniqueDevice({ deviceFingerprint: body.deviceFingerprint })
+
+      if (!device) {
+        throw DeviceNotFoundException
+      }
+
+      // Kiểm tra xem refreshToken này có tồn tại trong db không, đã hết hạn hay chưa
+      const refreshTokenInDb = await this.authRepo.findUniqueRefreshTokenIncludeUserRole({
+        token: body.refreshToken,
+      })
+
+      if (!refreshTokenInDb) {
+        throw RefreshTokenNotFoundException
+      }
+
+      //Trường hợp người dùng ở máy khác mà dùng refreshTOken của máy khác request thì quăng lỗi này
+      if (refreshTokenInDb.deviceId !== device.id) {
+        throw AbnormalDeviceDetectionException
+      }
+
+      if (new Date(refreshTokenInDb.expiresAt) < new Date()) {
+        throw RefreshTokenExpiredException
+      }
+
+      //Tối ưu lại sau, khi mà refresh-token query quá nhiều lần lặp lại cùng mục đích
+      const tokens = await this.generateTokens({
+        deviceId: refreshTokenInDb.deviceId,
+        roleId: refreshTokenInDb.user.roleId,
+        roleName: refreshTokenInDb.user.role.name,
+        userId: refreshTokenInDb.userId,
+        isRefreshToken: true,
+      })
+
+      return tokens
+
+      // Cần gì phải update device nữa, vì refreshToken tạo xong , deviceId thì có từ trước, việc còn lại là nó dùng deviceId đó , userId đó kết nối với refreshToken mới thôi
+      // //update device, để kết nối device(userDevice) với thằng refreshToken mới tạo
+      // await this.authRepo.createOrupdateDevice({
+      //   deviceInfo: {
+      //     deviceFingerprint: body.deviceFingerprint,
+      //     deviceName: deviceInfo.deviceName,
+      //     deviceType: deviceInfo.deviceType,
+      //     ip: deviceInfo.ip,
+      //     userAgent: deviceInfo.userAgent,
+      //   },
+      //   userId: userId,
+      // })
+    } catch (err) {
+      if (err instanceof HttpException) {
+        throw err
+      }
+
+      throw err
+    }
   }
 }
