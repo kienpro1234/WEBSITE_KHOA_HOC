@@ -161,6 +161,7 @@ model User {
   updatedCategoryTrans CategoryTranslation[] @relation("UpdatedByCategoryTranslation")
   createdRoles         Role[]              @relation("CreatedByRole")
   updatedRoles         Role[]              @relation("UpdatedByRole")
+  deletedRoles         Role[]              @relation("DeletedByRole")
   createdPermissions   Permission[]        @relation("CreatedByPermission")
   updatedPermissions   Permission[]        @relation("UpdatedByPermission")
   deletedPermissions   Permission[]        @relation("DeletedByPermission")
@@ -766,9 +767,10 @@ model CourseResource {
 // ========================================
 
 model Language {
-  id          Int       @id @default(autoincrement())
+  // Để id là string ví dụ "vi", "en", và k để default tự tăng mục đích yêu cầu FE luôn truyền lên id
+  id          String       @id @db.VarChar(15)
   name        String
-  code        String    @unique
+
   createdById Int?
   updatedById Int?
   deletedAt   DateTime?
@@ -786,7 +788,7 @@ model Language {
 model UserTranslation {
   id          Int       @id @default(autoincrement())
   userId      Int
-  languageId  Int
+  languageId  String
   name        String?
   bio         String?
   createdById Int?
@@ -806,7 +808,7 @@ model UserTranslation {
 model LectureTranslation {
   id          Int       @id @default(autoincrement())
   lectureId   Int
-  languageId  Int
+  languageId  String
   title       String
   content     String?
   createdById Int?
@@ -826,7 +828,7 @@ model LectureTranslation {
 model CourseTranslation {
   id          Int       @id @default(autoincrement())
   courseId    Int
-  languageId  Int
+  languageId  String
   title       String
   slug        String
   shortDesc   String
@@ -848,7 +850,7 @@ model CourseTranslation {
 model CategoryTranslation {
   id          Int       @id @default(autoincrement())
   categoryId  Int
-  languageId  Int
+  languageId  String
   name        String
   description String?
   createdById Int?
@@ -876,12 +878,14 @@ model Role {
   isActive    Boolean   @default(true)
   createdById Int?
   updatedById Int?
+  deletedById Int?
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   createdBy   User?        @relation("CreatedByRole", fields: [createdById], references: [id])
   updatedBy   User?        @relation("UpdatedByRole", fields: [updatedById], references: [id])
+  deletedBy   User?        @relation("DeletedByRole", fields: [deletedById], references: [id])
   users       User[]
   permissions Permission[]
 }

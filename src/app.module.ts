@@ -10,9 +10,12 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core'
 import { AllExceptionsFilter } from 'src/shared/filters/all-exception.filter'
 import { ProfileModule } from 'src/routes/profile/profile.module'
 import { AuthenticationGuard } from 'src/shared/guards/authentication.guard'
+import { LanguageModule } from 'src/routes/language/language.module'
+import { RoleModule } from 'src/routes/role/role.module'
+import { PermissionModule } from 'src/routes/permission/permission.module'
 
 @Module({
-  imports: [SharedModule, AuthModule, ProfileModule],
+  imports: [SharedModule, AuthModule, ProfileModule, LanguageModule, RoleModule, PermissionModule],
   controllers: [AppController],
   providers: [
     AppService,
