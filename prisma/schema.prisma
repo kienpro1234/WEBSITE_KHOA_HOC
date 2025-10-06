@@ -151,14 +151,24 @@ model User {
   // Existing relations
   createdLanguages     Language[]          @relation("CreatedByLanguage")
   updatedLanguages     Language[]          @relation("UpdatedByLanguage")
+  deletedLanguages     Language[]          @relation("DeletedByLanguage")
+
   createdUserTrans     UserTranslation[]   @relation("CreatedByUserTranslation")
   updatedUserTrans     UserTranslation[]   @relation("UpdatedByUserTranslation")
+  deletedUserTrans     UserTranslation[]   @relation("DeletedByUserTranslation")
+
   createdLectureTrans  LectureTranslation[] @relation("CreatedByLectureTranslation")
   updatedLectureTrans  LectureTranslation[] @relation("UpdatedByLectureTranslation")
+  deletedLectureTrans  LectureTranslation[] @relation("DeletedByLectureTranslation")
+
   createdCourseTrans   CourseTranslation[]   @relation("CreatedByCourseTranslation")
   updatedCourseTrans   CourseTranslation[]   @relation("UpdatedByCourseTranslation")
+  deletedCourseTrans   CourseTranslation[]   @relation("DeletedByCourseTranslation")
+
   createdCategoryTrans CategoryTranslation[] @relation("CreatedByCategoryTranslation")
   updatedCategoryTrans CategoryTranslation[] @relation("UpdatedByCategoryTranslation")
+  deletedCategoryTrans CategoryTranslation[] @relation("DeletedByCategoryTranslation")
+
   createdRoles         Role[]              @relation("CreatedByRole")
   updatedRoles         Role[]              @relation("UpdatedByRole")
   deletedRoles         Role[]              @relation("DeletedByRole")
@@ -204,7 +214,7 @@ model UserAuthProvider {
 
 model Category {
   id          Int       @id @default(autoincrement())
-  name        String
+  name        String    @unique @db.VarChar(100)
   parentId    Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -221,6 +231,8 @@ model Category {
   children     Category[]            @relation("SubCategories")
   courses      Course[]
   translations CategoryTranslation[]
+
+  
 }
 
 model Course {
@@ -773,12 +785,17 @@ model Language {
 
   createdById Int?
   updatedById Int?
+  deletedById Int?
+
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   createdBy            User?                 @relation("CreatedByLanguage", fields: [createdById], references: [id])
   updatedBy            User?                 @relation("UpdatedByLanguage", fields: [updatedById], references: [id])
+  deletedBy            User?                 @relation("DeletedByLanguage", fields: [deletedById], references: [id])
+
+  
   userTranslations     UserTranslation[]
   lectureTranslations  LectureTranslation[]
   courseTranslations   CourseTranslation[]
@@ -791,8 +808,11 @@ model UserTranslation {
   languageId  String
   name        String?
   bio         String?
+
   createdById Int?
   updatedById Int?
+  deletedById Int?
+
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -801,8 +821,10 @@ model UserTranslation {
   language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
   createdBy User?    @relation("CreatedByUserTranslation", fields: [createdById], references: [id])
   updatedBy User?    @relation("UpdatedByUserTranslation", fields: [updatedById], references: [id])
+  deletedBy User?    @relation("DeletedByUserTranslation", fields: [deletedById], references: [id])
 
-  @@unique([userId, languageId])
+  // @@unique([userId, languageId])
+  // Để unique partial index when deletedAt = null
 }
 
 model LectureTranslation {
@@ -811,8 +833,11 @@ model LectureTranslation {
   languageId  String
   title       String
   content     String?
+
   createdById Int?
   updatedById Int?
+  deletedById Int?
+
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -821,8 +846,10 @@ model LectureTranslation {
   language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
   createdBy User?    @relation("CreatedByLectureTranslation", fields: [createdById], references: [id])
   updatedBy User?    @relation("UpdatedByLectureTranslation", fields: [updatedById], references: [id])
+  deletedBy User?    @relation("DeletedByLectureTranslation", fields: [deletedById], references: [id])
 
-  @@unique([lectureId, languageId])
+  // @@unique([lectureId, languageId])
+  // Để unique partial index when deletedAt = null
 }
 
 model CourseTranslation {
@@ -833,8 +860,12 @@ model CourseTranslation {
   slug        String
   shortDesc   String
   fullDesc    String
+
+  
   createdById Int?
   updatedById Int?
+  deletedById Int?
+
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -843,8 +874,10 @@ model CourseTranslation {
   language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
   createdBy User?    @relation("CreatedByCourseTranslation", fields: [createdById], references: [id])
   updatedBy User?    @relation("UpdatedByCourseTranslation", fields: [updatedById], references: [id])
+  deletedBy User?    @relation("DeletedByCourseTranslation", fields: [deletedById], references: [id])
 
-  @@unique([courseId, languageId])
+  // @@unique([courseId, languageId])
+  // Để unique partial index when deletedAt = null
 }
 
 model CategoryTranslation {
@@ -853,8 +886,11 @@ model CategoryTranslation {
   languageId  String
   name        String
   description String?
+
   createdById Int?
   updatedById Int?
+  deletedById Int?
+
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -863,8 +899,9 @@ model CategoryTranslation {
   language  Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
   createdBy User?    @relation("CreatedByCategoryTranslation", fields: [createdById], references: [id])
   updatedBy User?    @relation("UpdatedByCategoryTranslation", fields: [updatedById], references: [id])
-
-  @@unique([categoryId, languageId])
+  deletedBy User?    @relation("DeletedByCategoryTranslation", fields: [deletedById], references: [id])
+  // @@unique([categoryId, languageId])
+  // Để unique partial index when deletedAt = null
 }
 
 // ========================================
